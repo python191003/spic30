@@ -114,13 +114,14 @@ c = IC30(c) #c是一个iclass30对象
 ### 使用了iclass30后的简化代码，如何从头获取全校用户信息
 ```python
 from iclass30 import *
-c = iclass30("教师账号", "对应密码")
+c = iclass30("15966567939", "111111")
 r = Reader()
-data = r.tackle(c.getGradeListByGroupClassId({"regionId": "", "optUserId": "optRealName": c.user.realname, "schoolId": c.user.schoolId}), ["year", "system_code"])
+data = r.tackle(c.getGradeListByGroupClassId({"regionId": "", "optUserId": c.user.id, "optRealName": c.user.realname, "schoolId": c.user.schoolid}), ["year", "system_code"])
+print(data)
 for i in data:
-    dat = r.tackle(c.getGradeClassList({"regionId": "", "optUserId": c.user.id, "optRealName": c.user.realname, "schoolId": c.user.schoolId, "year": i["year"], "systemCode": i["system_code"]}), ["id", "class_name"])
+    dat = r.tackle(c.getGradeClassList({"regionId": "", "optUserId": c.user.id, "optRealName": c.user.realname, "schoolId": c.user.schoolid, "year": i["year"], "systemCode": i["system_code"]}), ["id", "class_name"])
     for j in dat:
-        da = r.tackle(c.studentList({"schoolId": c.user.schoolId, "year": i["year"], "systemCode": i["system_code"], "classId": j["id"], "className": j["class_name"], "classType": "3", "keyWord":"", "cid":"", "page":"1", "optUserId": c.user.id, "optRealName": c.user.realname, "regionId": ""}),["id", "user_name", "realname"],True,True)
+        da = r.tackle(c.studentList({"schoolId": c.user.schoolid, "year": i["year"], "systemCode": i["system_code"], "classId": j["id"], "className": j["class_name"], "classType": "3", "keyWord":"", "cid":"", "page":"1", "limit":"1000", "optUserId": c.user.id, "optRealName": c.user.realname, "regionId": ""}),["id", "user_name", "realname"],True,True)
         for k in da:
             print(k)
 ```

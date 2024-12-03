@@ -49,7 +49,7 @@ class iclass30:
         'classList': 'service.iclass30.com/userMgr/baseclass/classList',
         'getGradeClassList': 'service.iclass30.com/userMgr/baseclass/getGradeClassList',
         'studentList': 'service.iclass30.com/userMgr/baselogin/studentList',
-        'getGradeListByGroupClassId': 'service.iclass30.com/userMgr/basegrade/getGradeClassList',
+        'getGradeListByGroupClassId': 'service.iclass30.com/userMgr/basegrade/getGradeListByGroupClassId',
         'getSubstitudeList': 'service.iclass30.com/userMgr/baseSubstitude/getSubstitudeList'
     }
 
@@ -92,13 +92,13 @@ class iclass30:
         headers = self.makeHeaders(url)
         r = requests.get("https://"+url, headers=headers, params=params)
         data = json.loads(r.text)
-        return data["data"] if data["code"] == 1 else data
+        return data
     
     def post(self, url, data=...):
         headers = self.makeHeaders(url)
         r = requests.post("https://"+url, headers=headers, data=data)
         rsp = json.loads(r.text)
-        return rsp["data"] if rsp["code"] == 1 else rsp["msg"]
+        return rsp["data"] if rsp["code"] == 1 else rsp
     
     def login(self, account, password):
         req = self.post("service.iclass30.com/base/baselogin/login",

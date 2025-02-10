@@ -1,4 +1,5 @@
 import sqlite3, os, requests, json
+import random, hashlib, datetime, mimetypes
 
 class User:
     def __init__(self, details: dict):
@@ -53,8 +54,6 @@ class ic30():
         return data
     
     def post(self, url, data={}):
-        if (not '/' in url) and (url in self.INDEX.keys()):
-            url = self.INDEX[url]
         headers = self.makeHeaders(url)
         r = requests.post("https://"+url, headers=headers, data=data)
         rsp = json.loads(r.text)
@@ -103,6 +102,22 @@ class ic30():
         if "token" in self.user.details.keys():
             headers["token"] = self.user.token
         return headers
+    
+    def uploadFile(self, filename):
+        """上传文件，返回文件路径"""
+        import base64
+        with open(filename, "rb") as f:
+            data = base64.b64encode(f.read()).decode("utf-8")
+        return self.post('xxq.iclass30.com/api/online/common/uploadBase64', data={"base64":data,"suffix":filename.split(".")[-1]})["data"]["uploadUrl"]
+    
+    def getLoginUserInfo(self, index=0, uid="", schoolid=""):
+        return self.get("service.iclass30.com/base/baselogin/getLoginUserInfo", {"userId": uid, "schoolId": schoolid})["data"]
+    
+    def getSchoolById(self, index=0, schoolid=""):
+        return self.get("service.iclass30.com/base/school/getSchoolById", {"schoolId": schoolid})["data"]
+    
+    def getSchoolStudentDataList(self, index=0, schoolid="", name="", mobile="", page=1, limit=10):
+        return self.get("service.iclass30.com/base/school/getSchoolStudentDataList", {"schoolId": schoolid, "name": name, "mobile": mobile, "page": page, "limit": limit})["data"]
 
 
 def loginFromId(uid):
@@ -176,3 +191,82 @@ class Reader:
             else:
                 cache.append(_cache)
         return cache
+
+
+class OSS:
+    def __init__(self, c30:ic30, path):
+        """path应该是指向文件的字符串，而不是指向目录，如果你打算遵守c30规范，它应该以/f.xxx结尾"""
+        self.c30 = c30
+        self.signature(path)
+    
+    def signature(self, path):
+        url = "service.iclass30.com/common/oss/signature?path=%s&token=%s" % (path, self.c30.user.token)
+        self.oss = self.c30.get(url)["data"]
+    
+    def upload(self, filename:str, rawdata:bytes, date:str="", filetype:str=""):
+        """警告：filename是文件名，不是文件路径，你期望文件下载时使用什么名字，这里就应该填写什么。时间应该遵循的格式举例：1/30/2025, 08:13:06 AM，不填将使用当前时间。不填filetype将会根据filename后缀名推测类型，filetype使用mimetype格式如image/png"""
+        url = "https://mk-basefiles.oss-cn-hangzhou.aliyuncs.com/"
+        boundary = "---------------------------" + "".join([str(random.randint(0, 9)) for i in range(30)])
+        headers = {
+            "Host": "mk-basefile.oss-cn-hangzhou.aliyuncs.com",
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0",
+            "Accept": "*/*",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
+            "Content-Type": "multipart/form-data; boundary=" + boundary[2:],
+            "Origin": "https://console.iclass30.com",
+            "Connection": "keep-alive",
+            "Referer": "https://console.iclass30.com/",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "cross-site"
+        }
+        filetype = filetype or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        data = f'{boundary}\r\nContent-Disposition: form-data; name="OSSAccessKeyId"\r\n\r\n{self.oss["accessid"]}\r\n\
+{boundary}\r\nContent-Disposition: form-data; name="policy"\r\n\r\n{self.oss["policy"]}\r\n\
+{boundary}\r\nContent-Disposition: form-data; name="signature"\r\n\r\n{self.oss["signature"]}\r\n\
+{boundary}\r\nContent-Disposition: form-data; name="key"\r\n\r\n{self.oss["dir"]}\r\n\
+{boundary}\r\nContent-Disposition: form-data; name="Content-Disposition"\r\n\r\nattachment;filename={filename}\r\n\
+{boundary}\r\nContent-Disposition: form-data; name="id"\r\n\r\nWU_FILE_0\r\n\
+{boundary}\r\nContent-Disposition: form-data; name="name"\r\n\r\n{filename}\r\n\
+{boundary}\r\nContent-Disposition: form-data; name="type"\r\n\r\n{filetype}\r\n\
+{boundary}\r\nContent-Disposition: form-data; name="lastModifiedDate"\r\n\r\n{date or datetime.datetime.now().strftime("%m/%d/%Y, %H:%M:%S %p")}\r\n\
+{boundary}\r\nContent-Disposition: form-data; name="size"\r\n\r\n{len(rawdata)}\r\n\
+{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\nContent-Type: {filetype}\r\n\r\n'
+        data = data.encode("utf-8") + rawdata
+        data = data + (f'\r\n{boundary}--\r\n').encode("utf-8")
+        r = requests.post(url, headers=headers, data=data)
+        return r.status_code,r.text,r.headers
+    
+    def insertResource(self, filename, rawdata, filetype=""):
+        url = "service.iclass30.com/resource/center/batchInsertResource"
+        md5 = hashlib.md5()
+        md5.update(rawdata)
+        md5 = md5.hexdigest()
+        data = {
+            "schoolId": self.c30.user.schoolid,
+            "userId": self.c30.user.id,
+            "files": json.dumps([
+                {
+                    "title": ".".join(filename.split(".")[:-1]),
+                    "url": self.oss["dir"],
+                    "size": len(rawdata),
+                    "ext": filename.split(".")[-1],
+                    "fileType": filetype or mimetypes.guess_type(filename)[0] or "application/octet-stream",
+                    "md5": md5
+                }
+            ]),
+            "appType": 0,
+            "gradeId": "",
+            "gradeCode":"",
+            "gradeName": "",
+            "subjectId": "",
+            "subjectCode": "",
+            "subjectName": "",
+            "isRename": 0,
+            "parentId": 0,
+            "optUserId": self.c30.user.id,
+            "optUserName": self.c30.user.realname,
+            "regionId": ""
+        }
+        return self.c30.post(url, data)
